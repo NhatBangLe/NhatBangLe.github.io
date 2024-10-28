@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@5.0.0/bundles/stomp.umd.min.js"></script>
+		<title>Document</title>
+		<style>
+			#chat-history {
+				width: 80vw;
+				height: 50vh;
+				border-width: 2px;
+				border-style: dashed;
+				list-style-type: none;
+				overflow-y: auto;
+				scroll-behavior: smooth;
+			}
+
+			.chat-form {
+				width: 80vw;
+				display: flex;
+				align-items: center;
+				justify-items: center;
+			}
+
+			#chat-text {
+				width: 300px;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>Simple Chat Application</h1>
+		<div style="margin: 10px">
+			<ul>
+				<li>Nhập tên người dùng và mã phòng để truy cập phòng chat.</li>
+				<li>Liên hệ quản trị viên để đăng ký vào phòng chat.</li>
+				<li>Các phòng chat khả dụng:</li>
+			</ul>
+			<ol style="margin-left: 20px">
+				<li>Tên phòng: BTPM-Test-01 - ID phòng: 1</li>
+				<li>Tên phòng: BTPM-Test-02 - ID phòng: 2</li>
+				<li>Tên phòng: BTPM-Test-03 - ID phòng: 3</li>
+			</ol>
+		</div>
+		<form spellcheck="false" class="connect-form" id="connect-form">
+			<input
+				type="text"
+				name="username"
+				id="username"
+				placeholder="Tên người dùng"
+			/>
+			<input type="text" name="roomId" id="room-id" placeholder="Mã phòng" />
+			<input id="connect-btn" type="submit" value="Kết nối" />
+			<input id="disconnect-btn" type="button" value="Ngắt kết nối" disabled />
+		</form>
+		<ul id="chat-history"></ul>
+		<form spellcheck="false" class="chat-form" id="chat-form">
+			<input type="text" name="chat-text" id="chat-text" />
+			<input type="submit" value="Send" />
+		</form>
+	</body>
+	<script>
+		const chatHistory = document.getElementById('chat-history');
+		const chatText = document.getElementById('chat-text');
+		const chatForm = document.getElementById('chat-form'),
+			connectForm = document.getElementById('connect-form');
+		const usernameTxf = document.getElementById('username'),
+			roomIdTxf = document.getElementById('room-id');
+		const connectButton = document.getElementById('connect-btn'),
+			disconnectButton = document.getElementById('disconnect-btn');
+
+		let username = '';
+		const conversationId = '1',
+			client = new StompJs.Client({});
+
+		function appendNewText(text) {
+			const node = document.createElement('li');
+			const textNode = document.createTextNode(text);
+			node.appendChild(textNode);
+			chatHistory.appendChild(node);
+		}
+
+		function onClientConnected(frame) {
+			alert(`Connected successfully with senderId: ${username}`);
+			client.subscribe(`/topic/conversation/${conversationId}`, (incoming) => {
+				const messageObject = JSON.parse(incoming.body);
+				const timestamp = new Date(
+					messageObject.createdAt
+				).toLocaleTimeString();
+				console.log(messageObject);
+				const messageExtracted = `${timestamp}: ${messageObject.text}`;
+
+				appendNewText(`${messageObject.senderId} - ${messageExtracted}`);
+			});
+		}
+
+		function handleErrorFrame(frame) {
+			alert('Connected failure');
+			document.getElementById('connect-btn').disabled = false;
+			document.getElementById('disconnect-btn').disabled = true;
+
+			console.log('Broker reported error: ' + frame.headers['message']);
+			console.log('Additional details: ' + frame.body);
+		}
+
+		function connect(e) {
+			e.preventDefault();
+
+			username = usernameTxf.value;
+
+			client.configure({
+				brokerURL: 'ws://34.92.46.103:80/chat',
+				debug: function (str) {
+					console.log(str);
+				},
+				logRawCommunication: true,
+				connectHeaders: { userId: username },
+				disconnectHeaders: { userId: username },
+				reconnectDelay: 5000,
+				heartbeatIncoming: 4000,
+				heartbeatOutgoing: 4000,
+				onConnect: onClientConnected,
+				onStompError: handleErrorFrame,
+			});
+
+			client.activate();
+			connectButton.disabled = true;
+			disconnectButton.disabled = false;
+		}
+
+		function disconnect() {
+			client.deactivate();
+			connectButton.disabled = false;
+			disconnectButton.disabled = true;
+		}
+
+		function send(e) {
+			e.preventDefault();
+			if (client == null) return;
+
+			const text = chatText.value;
+			if (text.length === 0) return;
+			chatText.value = '';
+
+			const body = JSON.stringify({
+				text,
+				attachments: null,
+				senderId: username,
+			});
+			client.publish({
+				destination: `/sc/conversation/${conversationId}`,
+				body,
+			});
+		}
+
+		connectForm.addEventListener('submit', connect);
+		chatForm.addEventListener('submit', send);
+	</script>
+</html>
